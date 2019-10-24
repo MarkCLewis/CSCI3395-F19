@@ -7,6 +7,8 @@ import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.feature.StandardScaler
+import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.sql.functions._
 
 object TempMLStuff extends App {
   val spark =
@@ -46,7 +48,7 @@ object TempMLStuff extends App {
     .setOutputCol("features")
   // println(va.explainParams())
   val dataWithBigFeature = va.transform(dataWithTime)
-  dataWithBigFeature.show(true)
+  dataWithBigFeature.show(false)
 
   val scaler = new StandardScaler()
     .setInputCol("features")
@@ -54,6 +56,29 @@ object TempMLStuff extends App {
   val scalerModel = scaler.fit(dataWithBigFeature)
   val dataScaled = scalerModel.transform(dataWithBigFeature)
   dataScaled.show()
+  dataScaled.select('scaledFeatures).show(false)
+
+  // Find warming is SA
+  val timeVA = new VectorAssembler().setInputCols(Array("time")).setOutputCol("timeVect")
+  val dataWithTimeFeature = timeVA.transform(dataWithTime)
+
+  val lr = new LinearRegression()
+    .setFeaturesCol("timeVect")
+    .setLabelCol("tave")
+
+  val lrModel = lr.fit(dataWithTimeFeature)
+  println(lrModel.coefficients)
+  val fitData = lrModel.transform(dataWithTimeFeature)
+  // fitData.show()
+
+  // Find variation in San Antonio
+  val dataWithSinCos = dataWithTime.withColumn("sin", sin('time*math.Pi*2)).withColumn("cos", cos('time*math.Pi*2))
+  val sinVA = new VectorAssembler().setInputCols(Array("time", "sin", "cos")).setOutputCol("sinFeature")
+  val dataWithSinFeature = sinVA.transform(dataWithSinCos)
+  val sinLR = new LinearRegression().setFeaturesCol("sinFeature").setLabelCol("tave")
+  val sinModel = sinLR.fit(dataWithSinFeature)
+  println(sinModel.coefficients)
+
 
   spark.sparkContext.stop()
 }
